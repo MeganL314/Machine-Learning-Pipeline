@@ -2,13 +2,14 @@
 
 #### 1. RFE Classification - Cross Validation and hold out accuracy, AUC
 
-
 #### 2. RFE Survival - Cross Validation and hold out accuracy, C Index
 
+#### 3. LASSO Classification
 
-#### 3.
+#### 4. LASSO Survival
 
+#### 5. Forest plots, box plots
 
-#### 4.
+#### 6. LASSO effect size vs. lambda plots
 
 

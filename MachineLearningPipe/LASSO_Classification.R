@@ -23,7 +23,8 @@ library(cutpointr)
 
 ## load data
 path_Baseline = "/Path/to/data/Baseline/"
-path_Change15 = "/Path/to/data/Change15/"
+path = "/Path/to/data/Change15/"
+suffix = ""
 
 OLINK_X_train <- read.csv(paste(path, "X_train_Olink",suffix, ".csv", sep=""), header=TRUE)
 CBC_X_train <- read.csv(paste(path, "X_train_OlinkCBC",suffix, ".csv", sep=""), header=TRUE)

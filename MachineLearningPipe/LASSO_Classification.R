@@ -22,9 +22,9 @@ library(magrittr)
 library(cutpointr)
 
 ## load data
-path_Baseline = "/Path/to/data/Baseline/"
-path = "/Path/to/data/Change15/"
-suffix = ""
+path_Baseline <- "/Path/to/data/Baseline/"
+path <- "/Path/to/data/Change15/"
+suffix <- ""
 
 OLINK_X_train <- read.csv(paste(path, "X_train_Olink",suffix, ".csv", sep=""), header=TRUE)
 CBC_X_train <- read.csv(paste(path, "X_train_OlinkCBC",suffix, ".csv", sep=""), header=TRUE)
@@ -42,10 +42,10 @@ y_test <- read.csv(paste(path, "y_test",suffix, ".csv", sep=""), header=TRUE)
 ######################################################################################################################################################
 
 ### Set parameters
-X_train_data = OLINK_X_train
-y_train_data = y_train
-X_holdout_data = Olink_HPV_Neg_TwoTimes[, names(OLINK_X_train)]
-y_holdout_data = Olink_HPV_Neg_y
+X_train_data <- OLINK_X_train
+y_train_data <- y_train
+X_holdout_data <- OLINK_X_test
+y_holdout_data <- y_test
 
 X_train_scaled <- scale(X_train_data)
 X_train <- data.matrix(X_train_scaled)
@@ -246,11 +246,8 @@ dataframe_coef <- as.data.frame(summary(data_coef))
 row1 <- colnames(X_train)[unlist(dataframe_coef$i[2:length(dataframe_coef$i)])-1] #remove the intercept column
 row2 <- dataframe_coef$x[2:length(dataframe_coef$x)] #remove the intercept column
 nonzero_df = data.frame("analyte_full" = row1, "coef" = row2)
-# nonzero_df$analyte <- sapply(strsplit(as.character(nonzero_df$analyte_full), "_"), `[`, 1)
-nonzero_df$analyte <- sub("\\.", "-", nonzero_df$analyte_full)
-# nonzero_df$analyte <- as.character(nonzero_df$analyte_full)
-nonzero_df$analyte = gsub("\\.","-",as.character(nonzero_df$analyte))
-nonzero_df$analyte = gsub("_"," ",as.character(nonzero_df$analyte))
+nonzero_df$analyte <- gsub("\\.","-", as.character(nonzero_df$analyte))
+nonzero_df$analyte <- gsub("_"," ", as.character(nonzero_df$analyte))
 nonzero_df <- nonzero_df[sort(abs(nonzero_df$coef),decreasing=T,index.return=T)[[2]],]
 nonzero_df$s <- ifelse(nonzero_df$coef < 0, "negative", "positive")
 level_order <- nonzero_df$analyte
@@ -269,8 +266,7 @@ tmp <- reshape::melt(tmp, id = "coef")
 tmp$variable <- as.numeric(gsub("s", "", tmp$variable))
 tmp$lambda <- fit_elim$lambda[tmp$variable+1] # extract the lambda values
 tmp$norm <- apply(abs(beta[-1,]), 2, sum)[tmp$variable+1] # compute L1 norm
-#tmp$coef <- sapply(strsplit(as.character(tmp$coef), "_"), `[`, 1)
-tmp$coef = gsub("\\.","-",as.character(tmp$coef))
+tmp$coef <- gsub("\\.","-",as.character(tmp$coef))
 tmp$coef <- sub("_", " ", tmp$coef)
 
 

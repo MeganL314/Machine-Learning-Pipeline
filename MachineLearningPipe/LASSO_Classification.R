@@ -1,10 +1,9 @@
 rm(list = ls())
-## Load libraries
+
+# Load required libraries
 library(ggplot2)
 library(tidyr)
 library(rstatix)
-library(reshape2)
-library(reshape)
 library(ggpubr)
 library(gridExtra)
 library(pROC)
@@ -12,207 +11,92 @@ library(nnet)
 library(ROCR)
 library(survival)
 library(survminer)
-library(tidyverse)
 library(dplyr)
-library(plotmo) # for plot_glmnet
 library(glmnet)
-library(mlr)
 library(MASS)
 library(magrittr)
 library(cutpointr)
+library(reshape)
 
-## load data
-path_Baseline <- "/Path/to/data/Baseline/"
-path <- "/Path/to/data/Change15/"
-suffix <- ""
-
-OLINK_X_train <- read.csv(paste(path, "X_train_Olink",suffix, ".csv", sep=""), header=TRUE)
-CBC_X_train <- read.csv(paste(path, "X_train_OlinkCBC",suffix, ".csv", sep=""), header=TRUE)
-
-y_train <- read.csv(paste(path, "y_train",suffix, ".csv", sep=""), header=TRUE)
-
-OLINK_X_test <- read.csv(paste(path, "X_test_Olink",suffix, ".csv", sep=""), header=TRUE)
-CBC_X_test <- read.csv(paste(path, "X_test_OlinkCBC",suffix, ".csv", sep=""), header=TRUE)
-
-y_test <- read.csv(paste(path, "y_test",suffix, ".csv", sep=""), header=TRUE)
+# Load data
+input_path <- "/path/to/data/"
+features_train <- read.csv(paste0(input_path, "X_train.csv"), header = TRUE)
+features_test <- read.csv(paste0(input_path, "X_test.csv"), header = TRUE)
+labels_train <- read.csv(paste0(input_path, "y_train.csv"), header = TRUE)
+labels_test <- read.csv(paste0(input_path, "y_test.csv"), header = TRUE)
 
 
 ######################################################################################################################################################
 ########################################################### LASSO RUN CV TO GET LAMBDA MIN ###########################################################
 ######################################################################################################################################################
 
-### Set parameters
-X_train_data <- OLINK_X_train
-y_train_data <- y_train
-X_holdout_data <- OLINK_X_test
-y_holdout_data <- y_test
+# Set working matrices
+train_matrix <- scale(data.matrix(features_train))
+test_matrix <- scale(data.matrix(features_test))
+y_train <- data.matrix(labels_train)
+y_test <- data.matrix(labels_test)
 
-X_train_scaled <- scale(X_train_data)
-X_train <- data.matrix(X_train_scaled)
-
-y_train <- data.matrix(y_train_data)
-X_holdout <- data.matrix(scale(X_holdout_data))
-y_holdout <- data.matrix(y_holdout_data)
+# Prepare storage
+seeds <- 1:100
+results <- data.frame()
+features_gt1 <- c()
+features_lt1 <- c()
 
 
 plotname <- 'Olink_Baseline'
 ##################################################
 ########## RUN LOOP TO CHOOSE LAMBDA MIN #########
 ##################################################
-list_seednum <- c()
-list_LambdaMin <- c()
-list_pval <- c()
-list_num_features <- c()
-list_holdout_pval <- c()
-list_accuracy_train <- c()
-list_accuracy_holdout <- c()
-list_auc_train <- c()
-list_auc_holdout <- c()
-features_greater_than_1 <- c()
-features_less_than_1 <- c()
+# Run LASSO for each seed
+for (seed in seeds) {
+  set.seed(seed)
+  
+  lasso_cv <- cv.glmnet(train_matrix, y_train, alpha = 1, family = 'binomial', nfolds = 5)
+  lambda_min <- lasso_cv$lambda.min
+  
+  coef_min <- coef(lasso_cv, s = lambda_min)
+  nonzero_idx <- which(coef_min != 0)
+  or_values <- exp(coef_min[nonzero_idx])
 
-for(seednum in 1:100){
-  set.seed(seednum)
-  list_seednum <- c(list_seednum, seednum)
+  feature_names <- rownames(coef_min)[nonzero_idx]
+  gt1 <- feature_names[or_values > 1 & feature_names != "(Intercept)"]
+  lt1 <- feature_names[or_values < 1 & feature_names != "(Intercept)"]
+
+  features_gt1 <- c(features_gt1, paste(gt1, collapse = ", "))
+  features_lt1 <- c(features_lt1, paste(lt1, collapse = ", "))
   
-  # Fit lasso model with cross-validation
-  lasso_cv <- cv.glmnet(X_train, y_train, alpha = 1, family = 'binomial', nfolds = 5)
-  list_LambdaMin <- c(list_LambdaMin, lasso_cv$lambda.min)
+  # Final model
+  final_model <- glmnet(train_matrix, y_train, alpha = 1, lambda = lambda_min, family = 'binomial')
   
-  # Get the coefficients at lambda.min and identify non-zero coefficients
-  coef_min <- coef(lasso_cv, s = lasso_cv$lambda.min)
-  non_zero_indices <- which(coef_min != 0)  # Indices of non-zero coefficients
-  odds_ratios <- exp(coef_min[non_zero_indices])
-  
-  features_greater_than_1_temp <- ""
-  features_less_than_1_temp <- ""
-  
-  # Flag to control whether to add a comma
-  first_greater_than_1 <- TRUE
-  first_less_than_1 <- TRUE
-  
-  for (i in seq_along(non_zero_indices)) {
-    feature_name <- rownames(coef_min)[non_zero_indices[i]]
-    print(feature_name)
-    if (feature_name != "(Intercept)"){
-      coef_value <- coef_min[non_zero_indices[i]]
-      or_value <- odds_ratios[i]
-      print(or_value)
-      # Classify features based on the OR
-      if (or_value > 1) {
-        if (first_greater_than_1) {
-          features_greater_than_1_temp <- feature_name
-          first_greater_than_1 <- FALSE
-        } else {
-          features_greater_than_1_temp <- paste(features_greater_than_1_temp, feature_name, sep = ", ")
-        }}
-        
-       else if (or_value < 1) {
-        print(paste("Odds rato less than 1: ", feature_name, " ", or_value))
-        if (first_less_than_1) {
-          features_less_than_1_temp <- feature_name
-          first_less_than_1 <- FALSE
-        } else {
-          features_less_than_1_temp <- paste(features_less_than_1_temp, feature_name, sep = ", ")
-          
-      }
-  }}}
-  
-  features_greater_than_1 <- c(features_greater_than_1, features_greater_than_1_temp)
-  features_less_than_1 <- c(features_less_than_1,features_less_than_1_temp)
-  
-  num_features <- length(non_zero_indices) - 1  # Exclude intercept
-  list_num_features <- c(list_num_features, num_features)
-  
-  
-  # Prepare data for plotting coefficients
-  dataframe_coef <- data.frame(coef = coef_min[non_zero_indices], 
-                               analyte_full = rownames(coef_min)[non_zero_indices])
-  
-  # Remove intercept and prepare for ggplot
-  dataframe_coef <- dataframe_coef[dataframe_coef$analyte_full != "(Intercept)", ]
-  dataframe_coef$s <- ifelse(dataframe_coef$coef < 0, "negative", "positive")
-  
-  # Sort by absolute value of coefficients (in decreasing order)
-  dataframe_coef <- dataframe_coef[order(abs(dataframe_coef$coef), decreasing = TRUE),]
-  level_order <- dataframe_coef$analyte_full
-  
-  # Plot the coefficients using ggplot
-  png(paste(path, "/EffectSizePlots/",plotname, "_", seednum, ".png", sep=""), 
-      width=4, height=5, units="in", res=250)
-  
-  plot <- ggplot(dataframe_coef, aes(x = factor(analyte_full, level = level_order),
-                             y = coef, fill = s)) +
-    geom_col(colour = "black") +
-    xlab("") +
-    ylab("Coefficients") +
-    scale_fill_manual(values = c('#B8C0BB', '#D2CBAF'), limits = c("positive", "negative")) +
-    ggtitle(paste("lambda = ", round(lasso_cv$lambda.min, 3), sep = "")) +
-    custom_theme()
-  
-  print(plot)
-  
-  dev.off()
-  
-  # Get feature names for non-zero coefficients, excluding the intercept
-  feature_names <- rownames(coef_min)[non_zero_indices]
-  feature_names <- feature_names[feature_names != "(Intercept)"]
-  feature_names <- paste(feature_names, collapse = ", ")  # Concatenate feature names with commas
-  # list_feature_names <- c(list_feature_names, feature_names)
-  
-  # **Fit final lasso model using lambda.min**
-  final_lasso_model <- glmnet(X_train, y_train, alpha = 1, lambda = lasso_cv$lambda.min, family = 'binomial')
-  
-  # Predict on training and holdout sets using the final fitted model
-  preds_train <- predict(final_lasso_model, newx = X_train, type = "response")
-  preds_holdout <- predict(final_lasso_model, newx = X_holdout, type = "response")
-  
-  # Debugging: Check the range of predicted probabilities for holdout set
-  print(paste("Predicted probabilities for holdout: Min =", min(preds_holdout), "Max =", max(preds_holdout)))
-  
-  # Convert continuous probabilities to binary predictions (0 or 1) based on 0.5 threshold
-  pred_train_binary <- ifelse(preds_train > 0.5, 1, 0)
-  pred_holdout_binary <- ifelse(preds_holdout > 0.5, 1, 0)
-  
-  # Debugging: Check the first few binary predictions for the holdout set
-  print(paste("First few predicted binary values (holdout):", paste(pred_holdout_binary, collapse = ", ")))
-  
-  # Calculate Accuracy for training and holdout sets
-  accuracy_train <- mean(pred_train_binary == y_train)  # Proportion of correct predictions for training
-  accuracy_holdout <- mean(pred_holdout_binary == y_holdout)  # Proportion of correct predictions for holdout
-  
-  # Debugging: Print accuracy values
-  #print(paste("Accuracy (train):", accuracy_train))
-  #print(paste("Accuracy (holdout):", accuracy_holdout))
-  
-  # Calculate AUC for training and holdout sets
-  auc_train <- pROC::roc(y_train, preds_train)$auc  # AUC for training set
-  auc_holdout <- pROC::roc(y_holdout, preds_holdout)$auc  # AUC for holdout set
-  
-  # Append Accuracy and AUC values to respective lists
-  list_accuracy_train <- c(list_accuracy_train, accuracy_train)
-  list_accuracy_holdout <- c(list_accuracy_holdout, accuracy_holdout)
-  list_auc_train <- c(list_auc_train, auc_train)
-  list_auc_holdout <- c(list_auc_holdout, auc_holdout)
-  
-  # Perform Wilcoxon rank-sum test for p-value
-  pval_train <- wilcox.test(preds_train ~ y_train)$p.value
-  list_pval <- c(list_pval, pval_train)
-  
-  pval_holdout <- wilcox.test(preds_holdout ~ y_holdout)$p.value
-  list_holdout_pval <- c(list_holdout_pval, pval_holdout)
+  pred_train <- predict(final_model, newx = train_matrix, type = "response")
+  pred_test <- predict(final_model, newx = test_matrix, type = "response")
+
+  acc_train <- mean(ifelse(pred_train > 0.5, 1, 0) == y_train)
+  acc_test <- mean(ifelse(pred_test > 0.5, 1, 0) == y_test)
+
+  auc_train <- pROC::roc(y_train, pred_train)$auc
+  auc_test <- pROC::roc(y_test, pred_test)$auc
+
+  pval_train <- wilcox.test(pred_train ~ y_train)$p.value
+  pval_test <- wilcox.test(pred_test ~ y_test)$p.value
+
+  results <- rbind(results, data.frame(
+    seed = seed,
+    lambda = lambda_min,
+    pval_train = pval_train,
+    acc_train = acc_train,
+    auc_train = auc_train,
+    acc_test = acc_test,
+    auc_test = auc_test,
+    num_features = length(nonzero_idx) - 1,
+    features_gt1 = paste(gt1, collapse = ", "),
+    features_lt1 = paste(lt1, collapse = ", ")
+  ))
+
+
 }
 
-# Output results in a data frame
-output_seedNum <- data.frame('seed' = list_seednum, 'lambdaMin' = list_LambdaMin,
-                             'pval' = list_pval, 'accuracy_train' = list_accuracy_train,
-                             'auc_train' = list_auc_train,
-                             'accuracy_holdout' = list_accuracy_holdout, 'auc_holdout' = list_auc_holdout,
-                             'numfeatures' = list_num_features, 'OR>1 Features' = features_greater_than_1,
-                             'OR<1 Features' = features_less_than_1, check.names=FALSE
-)
-#### HOW TO CHOOSE LAMBDA MIN:
-write.csv(output_seedNum, paste(path, "OR/Olink_Baseline.csv", sep=""), row.names=FALSE)
+write.csv(results, paste0(input_path, "lasso_summary.csv"), row.names = FALSE)
 
 
 
@@ -228,7 +112,6 @@ preds_holdout <- predict(final_lasso_model, newx = X_holdout, type = "response")
 pred_holdout_binary <- ifelse(preds_holdout > 0.5, 1, 0)
 accuracy_holdout <- mean(pred_holdout_binary == y_holdout)
 accuracy_holdout
-
 
 
 ##############################################################
@@ -339,7 +222,7 @@ index <- c("NCB", "CB")
 dataframe$Response1_num <- values[match(dataframe$Response1, index)]
 
 Patient_ID_Test <- c(28, 41, 29, 38, 4, 27, 24, 50, 25)
-## [1, 2, 5, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 22, 23, 26, 30, 31, 32, 35, 36, 42, 43, 44, 45, 47, 48, 49, 51]
+
 Patient_ID_Train <- setdiff(dataframe$Patient, Patient_ID_Test)
 
 X_train_df <- dataframe[dataframe$Patient %in% Patient_ID_Train, ]
@@ -461,8 +344,3 @@ auc_value <- pROC::auc(roc_curve)
 legend("bottomright",legend = paste("AUC =", round(auc_value, 3)),col = "#1c61b6",lwd = 2)
 
 dev.off()
-
-
-
-
-

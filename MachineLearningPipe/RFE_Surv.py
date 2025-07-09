@@ -14,32 +14,31 @@ warnings.filterwarnings('ignore')
 from sklearn.model_selection import train_test_split
 
 ### Load data
-PDS = pd.read_csv("/Path/To/Files/filenames.csv")
-Quicc = pd.read_csv("/Path/To/Files/filenames.csv")
+HoldoutData = pd.read_csv("/Path/To/Files/filenames.csv")
+TestData = pd.read_csv("/Path/To/Files/filenames.csv")
 
-################## For Quicc, filter by Arm ########################
-# Arm2 = Quicc[(Quicc['Arm'] != 'Arm 1')]
-Quicc.columns = [ re.sub(r"\.", "-", col) for col in Quicc.columns]
-# print(Arm2.columns.tolist())
+################## For a subset of the data, filter ########################
+Arm2 = TestData[(TestData['Arm'] != 'Arm 1')]
+
 
 ### Specify lists of analytes
-# Olink Baseline
-Olink_Baseline = PDS.columns[24:115].tolist()
-# Olink + CBCs Baseline
-Olink_CBC_Baseline = PDS.columns[13:115].tolist()
+# List of feature names
+Features_Baseline = HoldoutData.columns[24:115].tolist()
+
+
 # Olink 15 days
-Olink_15days_V1 = [re.sub(r"_Baseline", "_Ch15d", text) for text in Olink_Baseline]
+Features_15days_V1 = [re.sub(r"_Baseline", "_Ch15d", text) for text in Features_Baseline]
 remove = ['IL12_Ch15d','IL15_Ch15d', 'PD-L1_Ch15d'] ### Make sure to remove  PD-L1, IL-15, and IL-12 Change
-Olink_15days = [item for item in Olink_15days_V1 if item not in remove]
-# Olink + CBCs 15 days
-Olink_CBC_15days_V1 = [re.sub(r"_Baseline", "_Ch15d", text) for text in Olink_CBC_Baseline]
-Olink_CBC_15days = [item for item in Olink_CBC_15days_V1 if item not in remove]
+Features_15days = [item for item in Features_15days_V1 if item not in remove]
+
 # Olink Two Times
-Olink_TwoTimes = Olink_15days + Olink_Baseline
-# Olink + CBCs Two Times
-Olink_CBC_TwoTimes = Olink_CBC_15days + Olink_CBC_Baseline
+Features_TwoTimes = Features_15days + Features_Baseline
 
 
+
+### Clean data, 
+### Response column and values of response column will need to be changed
+### depending on dataset
 def create_XY_response(Main_df, feature_list, response='no', survival='yes', 
                        event_col='dead', time_col='survival'):
     target_array = event_indicator = time_to_event = features_array = None
@@ -74,17 +73,17 @@ def create_XY_response(Main_df, feature_list, response='no', survival='yes',
 
 
 ## SPLIT DATA FIRST
-train_df, test_df = train_test_split(Quicc, test_size=0.25, random_state=8)
+train_df, test_df = train_test_split(Arm2, test_size=0.25, random_state=8)
 
 
-event_train_D1, time_train_D1, X_train_D1, y_train_D1 = create_XY_response(train_df, Olink_Baseline)
-event_test_D1, time_test_D1, X_test_D1, y_test_D1 = create_XY_response(test_df, Olink_Baseline)
+event_train_D1, time_train_D1, X_train_D1, y_train_D1 = create_XY_response(train_df, Features_Baseline)
+event_test_D1, time_test_D1, X_test_D1, y_test_D1 = create_XY_response(test_df, Features_Baseline)
 
-event_train_Ch15, time_train_Ch15, X_train_Ch15, y_train_Ch15 = create_XY_response(train_df, Olink_15days)
-event_test_Ch15, time_test_Ch15, X_test_Ch15, y_test_Ch15 = create_XY_response(test_df, Olink_15days)
+event_train_Ch15, time_train_Ch15, X_train_Ch15, y_train_Ch15 = create_XY_response(train_df, Features_15days)
+event_test_Ch15, time_test_Ch15, X_test_Ch15, y_test_Ch15 = create_XY_response(test_df, Features_15days)
 
-event_train_TT, time_train_TT, X_train_TT, y_train_Ch15 = create_XY_response(train_df, Olink_TwoTimes)
-event_test_TT, time_test_TT, X_test_TT, y_test_Ch15 = create_XY_response(test_df, Olink_TwoTimes)
+event_train_TT, time_train_TT, X_train_TT, y_train_Ch15 = create_XY_response(train_df, Features_TwoTimes)
+event_test_TT, time_test_TT, X_test_TT, y_test_Ch15 = create_XY_response(test_df, Features_TwoTimes)
 
 event_type = [('dead', '?'), ('survival', '<f8')]
 ## Baseline
@@ -100,7 +99,7 @@ y_train_TT = np.array(list(zip(event_train_TT, time_train_TT)), dtype=event_type
 y_test_TT = np.array(list(zip(event_test_TT, time_test_TT)), dtype=event_type)
 
 
-
+### Drop highly correlated features and print a .csv with correlation matrix
 def drop_features( check_corr_df, subset_columns, outname=None):
     # Replace common non-numeric placeholders with NaN and convert to numeric
     cleaned_df = check_corr_df.replace({'No Data': np.nan, '#VALUE!': np.nan, '': np.nan})
@@ -139,9 +138,9 @@ def drop_features( check_corr_df, subset_columns, outname=None):
     # Return remaining features
     return [col for col in subset_columns if col not in to_drop]
 
-Baseline_drop = drop_features(X_train_D1, Olink_Baseline, outname="Baseline_Olink_BothArms_Spearman.csv")
-Change15_drop = drop_features(X_train_Ch15, Olink_15days, outname="Change15_Olink_BothArms_Spearman.csv")
-TwoTimes_drop = drop_features(X_train_TT, Olink_TwoTimes, outname="BothTimePoints_Olink_BothArms_Spearman.csv")
+Baseline_drop = drop_features(X_train_D1, Features_Baseline, outname="Baseline_Olink_Arm2_Spearman.csv")
+Change15_drop = drop_features(X_train_Ch15, Features_15days, outname="Change15_Olink_Arm2_Spearman.csv")
+TwoTimes_drop = drop_features(X_train_TT, Features_TwoTimes, outname="BothTimePoints_Olink_Arm2_Spearman.csv")
 
 
 

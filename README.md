@@ -8,8 +8,7 @@
 
 #### 4. LASSO Survival
 
-#### 5. Forest plots, box plots
+#### 5. Forest plots, box plots, KM curves
 
 #### 6. LASSO effect size vs. lambda plots
-
 

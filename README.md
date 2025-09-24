@@ -1,14 +1,14 @@
 ## Machine-Learning-Pipeline
 
-#### 1. RFE Classification - Cross Validation and hold out accuracy, AUC
+#### RFE Classification - Cross Validation, hold out accuracy, AUC
 
-#### 2. RFE Survival - Cross Validation and hold out accuracy, C Index
+#### RFE Survival - Cross Validation, hold out accuracy, C Index
 
-#### 3. LASSO Classification
+#### LASSO Classification - choose optimal lambda, CV
 
-#### 4. LASSO Survival
+#### LASSO Survival  - choose optimal lambda, CV
 
-#### 5. Forest plots, box plots, KM curves
+#### Visuals: Forest plots, box plots, KM curves
 
-#### 6. LASSO effect size vs. lambda plots
+#### LASSO-only visuals: effect size vs. lambda plots
 

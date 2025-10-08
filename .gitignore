@@ -1,3 +1,9 @@
 .venv/
 venv/
 env/
+pyvenv.cfg
+runs/
+data/
+reports/
+logs/
+.DS_Store

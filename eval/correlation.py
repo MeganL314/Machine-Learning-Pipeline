@@ -85,13 +85,13 @@ def main():
                 for second_feature in feats_present:
                     if each_feature != second_feature:
                         new_combo = [each_feature, second_feature]
-
+                        print(new_combo)
                         if new_combo not in combinations and new_combo[::-1] not in combinations:
                             ## plot X[each_feature] vs. X[second_feature]
                             rho, pval = spearmanr(X[each_feature], X[second_feature])
                             plt.figure(figsize=(5, 4))
                             plt.scatter(X[each_feature], X[second_feature], alpha=0.7)
-                            plt.title(f"{each_feature} vs {second_feature}")
+                            #plt.title(f"")
                             plt.xlabel(each_feature)
                             plt.ylabel(second_feature)
                             plt.text(0.05, 0.95,
@@ -102,7 +102,7 @@ def main():
                                      bbox=dict(boxstyle="round", facecolor="white", alpha=0.6))
 
                             # tidy layout and save to PDF
-                            
+
                             plt.tight_layout()
                             pdf.savefig()
                             plt.close()

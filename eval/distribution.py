@@ -5,6 +5,7 @@ import numpy as np
 from datetime import datetime
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+from scipy.stats import skew
 
 
 def load_yaml(p): 
@@ -63,7 +64,7 @@ def main():
         print(len(feats_present))
         print("\n\n")
 
-        stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        stamp = datetime.now().strftime("%Y-%m-%d_%H")
         out_dir = Path(args.out_root) / "distribution" / stamp  / f"{dataset}__{featureset}"
         out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -72,13 +73,27 @@ def main():
             for feature in feats_present:
                 #print(feature)
                 #print(X[feature])
+                s = skew(X[feature])
+
+                ## between -0.5 and 0.5 is approximately normal/symmetrict
+                ## choosing slightly less 'strict' s value
+                
+                if abs(s) < 0.75:
+                    comment = "≈ Normal"
+                elif s > 0.75:
+                    comment = f"Right-skewed → try log(x) or sqrt(x)"
+                else:  # s < -0.75
+                    comment = f"Left-skewed → try x² or exp(x)"
+
                 fig, ax = plt.subplots(figsize=(6,4))
-                ax.hist(X[feature], bins=30, edgecolor="black")
-                ax.set_title(f"Histogram: {feature}")
-                ax.set_xlabel(feature); ax.set_ylabel("Count")
+                ax.hist(X[feature], bins=30, edgecolor="black", color="steelblue", alpha=0.8)
+                ax.set_title(f"{feature}\nSkew = {s:.2f} → {comment}")
+                ax.set_xlabel(feature)
+                ax.set_ylabel("Count")
                 fig.tight_layout()
-                pdf.savefig(fig)                         # append this page
-                plt.close(fig) 
+
+                pdf.savefig(fig)
+                plt.close(fig)
 
 
 

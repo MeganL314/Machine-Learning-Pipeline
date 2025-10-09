@@ -37,6 +37,9 @@ def main():
     data_cfg = load_yaml(args.data)
     matrix = pd.read_csv(args.matrix)
 
+
+    
+
     for idx, each in matrix.iterrows():
         print(each)
         dataset = str(each["dataset"])
@@ -85,7 +88,7 @@ def main():
                 for second_feature in feats_present:
                     if each_feature != second_feature:
                         new_combo = [each_feature, second_feature]
-                        print(new_combo)
+                        # print(new_combo)
                         if new_combo not in combinations and new_combo[::-1] not in combinations:
                             ## plot X[each_feature] vs. X[second_feature]
                             rho, pval = spearmanr(X[each_feature], X[second_feature])

@@ -73,7 +73,12 @@ def create_XY_response(Main_df, feature_index, event_col=None, time_col=None, re
 
 
 # def remove_correlated():
+# easier pre-built function:
+from feature_engine.selection import DropCorrelatedFeatures
 
+tr = DropCorrelatedFeatures(variables=None,
+                            method='spearman',
+                            threshold=0.9)
 
 
 
@@ -136,17 +141,27 @@ def main():
 
 
         ## Remove correlated features
+        ## Make sure to keep 'transf HPV16/18 copies per ml of plasma D1'
+        keep = 'transf HPV16/18 copies per ml of plasma D1'
+        cols_for_corr = [c for c in X_train.columns if c != keep]
 
+        X_train_drop_corr = tr.fit_transform(X_train[cols_for_corr])
+
+        # add the protected column back in
+        X_train_drop = pd.concat([X_train[[keep]], X_train_drop_corr], axis=1)
+
+        dropped_features = list(set(X_train.columns) - set( X_train_drop.columns))
+        print("Dropped features:", dropped_features)
 
 
         ## Transformation??
-
+        
 
         
         ## CPH-based RFE
 
 
-        
+
 
 if __name__ == "__main__":
     main()

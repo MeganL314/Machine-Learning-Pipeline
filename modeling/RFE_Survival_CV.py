@@ -13,7 +13,7 @@ from sksurv.linear_model import CoxPHSurvivalAnalysis
 from sksurv.metrics import concordance_index_censored
 import ast
 import csv
-from feature_engine.selection import DropCorrelatedFeatures
+from feature_engine.selection import DropCorrelatedFeatures, DropCorrelatedFeatures
 from sklearn.feature_selection import VarianceThreshold
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -80,8 +80,6 @@ def create_XY_response(Main_df, feature_index, event_col=None, time_col=None, re
 
 # def remove_correlated():
 # easier pre-built function:
-from feature_engine.selection import DropCorrelatedFeatures
-
 tr = DropCorrelatedFeatures(variables=None,
                             method='spearman',
                             threshold=0.9)

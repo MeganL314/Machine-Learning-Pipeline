@@ -9,15 +9,17 @@ from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.feature_selection import RFE
 from sklearn.pipeline import make_pipeline
-from sksurv.linear_model import CoxPHSurvivalAnalysis
-from sksurv.metrics import concordance_index_censored
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import roc_auc_score, accuracy_score
+from sksurv.linear_model import CoxPHSurvivalAnalysis  # (left to minimize diffs; unused now)
+from sksurv.metrics import concordance_index_censored  # (left to minimize diffs; unused now)
 import ast
 import csv
 from feature_engine.selection import DropCorrelatedFeatures
 from sklearn.feature_selection import VarianceThreshold
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
-warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 def load_yaml(p): 
     with open(p, "r") as f: 
@@ -110,31 +112,34 @@ def log_transforms(df, featureset, suffix="_log"):
 
 # def cross_validation_RFE():
 def cross_validation_RFE(X_full, y_full, X_HoldOut, y_HoldOut, output_file, splits, mandatory_feature, num_features_max=3):
-    # Initialize Cox Proportional Hazards model
-    cph_model = CoxPHSurvivalAnalysis(alpha=0.05)
-
+    # Initialize Logistic Regression model (instead of Cox)
+    logistic_model = LogisticRegression(
+        penalty="l2", solver="liblinear", max_iter=1000
+    )
+    
     # Open CSV file for writing results
     with open(output_file, mode='w', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow(['NumFeatures', 'Validation_Set_Concordance', 
-                         'Test_Set_Concordance', 'HR > 1 Features', 'HR < 1 Features'])
+        # Added Accuracy columns
+        writer.writerow(['NumFeatures', 'Validation_AUC', 'Validation_Accuracy',
+                         'Holdout_AUC', 'Holdout_Accuracy', 'OR > 1 Features', 'OR < 1 Features'])
 
         for random_state in range(1, 11):
             print(f'Running cross-validation with random state: {random_state}')
 
             # Loop through the number of features to select
             for num_features in range(1, num_features_max + 1):
-                rfe = RFE(cph_model, n_features_to_select=num_features)
+                rfe = RFE(logistic_model, n_features_to_select=num_features)
                 cv = StratifiedKFold(n_splits=splits, shuffle=True, random_state=random_state)
 
-                fold_concordances = []
-                fold_concordances_holdout = []
+                fold_concordances = []            # will store validation AUCs
+                fold_concordances_holdout = []    # will store holdout AUCs
 
                 scaler = StandardScaler()
-                for fold, (train_index, test_index) in enumerate(cv.split(X_full, y_full['event'])):
+                # use y_full directly for stratification (binary 0/1 vector)
+                for fold, (train_index, test_index) in enumerate(cv.split(X_full, y_full)):
                     X_train, X_test = X_full.iloc[train_index], X_full.iloc[test_index]
                     y_train, y_test = y_full[train_index], y_full[test_index]
-
 
                     vt = VarianceThreshold(threshold=1e-8)
                     vt.fit(X_train)
@@ -143,30 +148,21 @@ def cross_validation_RFE(X_full, y_full, X_HoldOut, y_HoldOut, output_file, spli
                     X_test_v  = X_test.loc[:,  keep_vt]
                     X_hold_v  = X_HoldOut.loc[:, keep_vt]
 
-                    # dcf = DropCorrelatedFeatures(method='spearman', threshold=0.90)
-                    #X_train_dc = dcf.fit_transform(X_train_v)
-                    #X_test_dc  = dcf.transform(X_test_v)
-                    #X_hold_dc  = dcf.transform(X_hold_v)
-                    #current_cols = list(X_train_dc.columns)
-                    X_train_dc = X_train_v
-                    X_test_dc  = X_test_v
-                    X_hold_dc  = X_hold_v
-                    current_cols = list(X_train_dc.columns)
-
-                    # print(current_cols)
+                    #dcf = DropCorrelatedFeatures(method='spearman', threshold=0.90)
+                    current_cols = list(X_train_v.columns)
 
                     # Cap extreme values before scaling
-                    q_low  = X_train_dc.quantile(0.005)
-                    q_high = X_train_dc.quantile(0.995)
-                    X_train_dc = X_train_dc.clip(lower=q_low, upper=q_high, axis=1)
-                    X_test_dc  = X_test_dc.clip(lower=q_low, upper=q_high, axis=1)
-                    X_hold_dc  = X_hold_dc.clip(lower=q_low, upper=q_high, axis=1)
+                    q_low  = X_train_v.quantile(0.005)
+                    q_high = X_train_v.quantile(0.995)
+                    X_train_v = X_train_v.clip(lower=q_low, upper=q_high, axis=1)
+                    X_test_v  = X_test_v.clip(lower=q_low, upper=q_high, axis=1)
+                    X_hold_v  = X_hold_v.clip(lower=q_low, upper=q_high, axis=1)
                     
                     # Scale the features for train and test data
-                    scaler.fit(X_train_dc)
-                    X_train_scaled = scaler.transform(X_train_dc)
-                    X_test_scaled = scaler.transform(X_test_dc)
-                    X_HoldOut_scaled = scaler.transform(X_hold_dc)
+                    scaler.fit(X_train_v)
+                    X_train_scaled = scaler.transform(X_train_v)
+                    X_test_scaled = scaler.transform(X_test_v)
+                    X_HoldOut_scaled = scaler.transform(X_hold_v)
 
                     X_train_scaled_df = pd.DataFrame(X_train_scaled)
                     ### Check why there is an error:
@@ -198,8 +194,8 @@ def cross_validation_RFE(X_full, y_full, X_HoldOut, y_HoldOut, output_file, spli
                     while len(selected_rest) > n_rest:
                         cols_order = [m_idx] + selected_rest
                         Xtr_sel = X_train_scaled[:, cols_order]
-                        cph_model.fit(Xtr_sel, y_train)
-                        coefs = np.asarray(cph_model.coef_).ravel()  # length = 1 + len(selected_rest)
+                        logistic_model.fit(Xtr_sel, y_train)
+                        coefs = np.asarray(logistic_model.coef_).ravel()  # length = 1 + len(selected_rest)
                         # index 0 is the mandatory feature; find weakest among the rest
                         drop_local = int(np.argmin(np.abs(coefs[1:])))  # local index within selected_rest
                         del selected_rest[drop_local]
@@ -221,49 +217,49 @@ def cross_validation_RFE(X_full, y_full, X_HoldOut, y_HoldOut, output_file, spli
 
                     # IMPORTANT: keep 'y_pred = rfe.estimator_.predict(...)' working
                     # point rfe.estimator_ to the model we fit on the selected columns.
-                    rfe.estimator_ = cph_model
+                    rfe.estimator_ = logistic_model
 
-                    # Fit the model on selected features to calculate hazard ratios
-                    cph_model.fit(X_train_rfe, y_train)
-                    hazard_ratios = np.exp(cph_model.coef_)  # Exponentiate the coefficients to get hazard ratios
+                    # Fit the model on selected features to calculate (odds) ratios
+                    logistic_model.fit(X_train_rfe, y_train)
+                    odds_ratios = np.exp(logistic_model.coef_).ravel()  # analogous to HRs for logistic
                     
-                    # Separate features based on HR > 1 or HR < 1
+                    # Separate features based on OR > 1 or OR < 1
                     hr_greater_than_1 = []
                     hr_less_than_1 = []
 
-                    for feature, hr in zip(selected_feature_names, hazard_ratios):
-                        if hr > 1:
+                    for feature, orv in zip(selected_feature_names, odds_ratios):
+                        if orv > 1:
                             hr_greater_than_1.append(feature)
                         else:
                             hr_less_than_1.append(feature)
 
-                    # Join feature names for HR > 1 and HR < 1
+                    # Join feature names for OR > 1 and OR < 1
                     hr_greater_than_1_str = ", ".join(hr_greater_than_1)
                     hr_less_than_1_str = ", ".join(hr_less_than_1)
 
-                    # Make predictions using the RFE model
-                    y_pred = rfe.estimator_.predict(X_test_rfe)
-                    
-                    # Calculate C-index
-                    status_values = y_test['event']  # Ensure it's a Series/Array for status
-                    time_values = y_test['time'] # Ensure it's a Series/Array for time
-                    cindex = concordance_index_censored(status_values, time_values, y_pred)
-                    fold_concordances.append(cindex[0])
+                    # Validation predictions & metrics
+                    y_score = rfe.estimator_.decision_function(X_test_rfe)
+                    val_auc = roc_auc_score(y_test, y_score)
+                    y_pred_cls = rfe.estimator_.predict(X_test_rfe)   # threshold at 0.5 (decision_function 0)
+                    val_acc = accuracy_score(y_test, y_pred_cls)
 
-                    # Evaluate on holdout set (scale holdout set using the same scaler)
+                    fold_concordances.append(val_auc)
+
+                    # Holdout predictions & metrics
                     X_HoldOut_rfe = X_HoldOut_scaled[:, selected_features]
-                    y_HoldOut_pred = rfe.estimator_.predict(X_HoldOut_rfe)
+                    y_HoldOut_score = rfe.estimator_.decision_function(X_HoldOut_rfe)
+                    ho_auc = roc_auc_score(y_HoldOut, y_HoldOut_score)
+                    ho_pred_cls = rfe.estimator_.predict(X_HoldOut_rfe)
+                    ho_acc = accuracy_score(y_HoldOut, ho_pred_cls)
 
-                    # Holdout set concordance index
-                    holdout_concordance = concordance_index_censored(y_HoldOut['event'], y_HoldOut['time'], y_HoldOut_pred)
-                    fold_concordances_holdout.append(holdout_concordance[0])
+                    fold_concordances_holdout.append(ho_auc)
 
                     selected_feature_names = ", ".join([colnames[i] for i in cols_order])
 
                     #if num_features > 1:
                         # Write results to CSV for this fold
-                    writer.writerow([num_features, cindex[0], holdout_concordance[0], hr_greater_than_1_str, hr_less_than_1_str])
-
+                    writer.writerow([num_features, val_auc, val_acc, ho_auc, ho_acc,
+                                         hr_greater_than_1_str, hr_less_than_1_str])
 
 
 
@@ -283,13 +279,14 @@ def main():
 
 
     print("Matrix shape:", matrix.shape)
-    #print("Matrix columns:", list(matrix.columns))
+    print("Matrix columns:", list(matrix.columns))
     print(matrix.head(2).to_string(index=False))
 
     for idx, row in matrix.iterrows():
 
         dataset = str(row["dataset"])
         featureset = str(row["featureset"])
+        response_col = str(row["response"])
 
         data_path = Path(data_cfg["datasets"][dataset]["path"])
         df = load_table(data_path)
@@ -300,25 +297,27 @@ def main():
         cols_to_balance = ast.literal_eval(row["cols_to_balance"])
         df["strat_col"] = df[cols_to_balance].astype(str).agg("_".join, axis=1)
 
+        # --- Drop rows with NA in response or any selected feature columns ---
+        response_and_features = list(set(feats_present) | {response_col})
+        # print(response_and_features)
+        # 'clean df by removing any rows with NA
+        df_clean = df.dropna(subset=response_and_features)
+
+        # finalize y
+        y_series = df_clean[response_col].loc[df_clean.index].astype(int)
+        # --------------------------------------------------------------------
 
         ## Split data into test and train based
-        train_df, test_df = train_test_split(df, test_size=0.25, stratify=df["strat_col"], random_state=row["random_state"])
+        train_df, test_df, y_train, y_test = train_test_split(
+            df_clean, y_series, test_size=0.25, stratify=df_clean["strat_col"], random_state=row["random_state"]
+        )
         print(train_df["strat_col"].value_counts().head())
         print(test_df["strat_col"].value_counts().head())
 
-        event_train, time_train, X_train, y_train = create_XY_response(train_df, feats_present, 
-                                                                       event_col=row["event"], time_col=row["time"])
+        # Build X matrices
+        X_train = train_df[feats_present].copy()
+        X_test  = test_df[feats_present].copy()
         
-        #print("\n TRAIN DATA:")
-        #print(event_train)
-        #print(time_train)
-        
-        event_test, time_test, X_test, y_test = create_XY_response(test_df, feats_present,
-                                                                   event_col=row["event"], time_col=row["time"])
-
-        #print("\n TEST DATA:")
-        #print(event_test)
-        #print(time_test)
 
         ## Remove correlated features
         ## Make sure to keep 'transf HPV16/18 copies per ml of plasma D1'
@@ -333,21 +332,6 @@ def main():
         dropped_features = list(set(X_train.columns) - set(X_train_drop.columns))
         print("Dropped features:", dropped_features)
 
-        corr = X_train.corr(method="spearman")
-
-        # Print the top absolute correlations
-        tri = corr.where(~np.tril(np.ones(corr.shape), k=0).astype(bool))
-        pairs = (
-            tri.stack()
-            .abs()
-            .sort_values(ascending=False)
-            .reset_index()
-            .rename(columns={"level_0":"feat1","level_1":"feat2",0:"abs_rho"})
-        )
-        print("top correlations:")
-        print(pairs.head(20).to_string(index=False))
-
-
         X_test_drop = X_test[X_train_drop.columns]
         cols_for_transform = [c for c in X_train_drop.columns if c not in {"Sex_num", "ICI_num",
                                                                        "cancer_num", "transf HPV16/18 copies per ml of plasma D1",
@@ -356,32 +340,26 @@ def main():
         ## Transformation??
         X_train_with_logs = log_transforms(X_train_drop, cols_for_transform)
         #print(X_train_with_logs.filter(like="_log").head())
-        #print(X_train_with_logs.columns.tolist())
 
         X_test_with_logs = log_transforms(X_test_drop, cols_for_transform)
         #print(X_test_with_logs.filter(like="_log").head())
 
 
-        y_train = np.array(list(zip(event_train, time_train)),
-                   dtype=[('event', '?'), ('time', '<f8')])
-
-        y_test = np.array(list(zip(event_test, time_test)),
-                  dtype=[('event', '?'), ('time', '<f8')])
-        
-        print(y_train)
-        print(y_test)
+        # y now is already numeric
+        print(y_train.head())
+        print(y_test.head())
 
         stamp = datetime.now().strftime("%Y-%m-%d_%H")
-        out_dir = Path(args.out_root) / "metrics" / stamp  / f"RFE_CPH_{dataset}__{featureset}"
+        out_dir = Path(args.out_root) / "metrics" / stamp  / f"RFE_LogReg_{dataset}__{featureset}"
         out_dir.mkdir(parents=True, exist_ok=True)
         out_file = out_dir / f"{row['folds']}fold_CV_RS{row['random_state']}.csv"
 
 
-        ## CPH-based RFE
+        ## RFE-based Logistic Regression
         folds = int(row["folds"])
 
-        #cross_validation_RFE(X_train_with_logs, y_train, X_test_with_logs, y_test, 
-        #            out_file, folds, 'transf HPV16/18 copies per ml of plasma D1')
+        cross_validation_RFE(X_train_with_logs, y_train.values, X_test_with_logs, y_test.values, 
+                    out_file, folds, 'transf HPV16/18 copies per ml of plasma D1')
 
 
 

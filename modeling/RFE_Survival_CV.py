@@ -13,7 +13,7 @@ from sksurv.linear_model import CoxPHSurvivalAnalysis
 from sksurv.metrics import concordance_index_censored
 import ast
 import csv
-from feature_engine.selection import DropCorrelatedFeatures, DropCorrelatedFeatures
+from feature_engine.selection import DropCorrelatedFeatures
 from sklearn.feature_selection import VarianceThreshold
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -380,6 +380,14 @@ def main():
 
         #cross_validation_RFE(X_train_with_logs, y_train, X_test_with_logs, y_test, 
         #            out_file, folds, 'transf HPV16/18 copies per ml of plasma D1')
+
+        save_dir = Path("../../../data-wrangle/")     
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        X_train_with_logs.to_csv(save_dir / f"{featureset}_X_train_with_logs_surv.csv", index=False)
+        pd.DataFrame(y_train).to_csv(save_dir / f"{featureset}_y_train_surv.csv", index=False)
+        X_test_with_logs.to_csv(save_dir / f"{featureset}_X_test_with_logs_surv.csv", index=False)
+        pd.DataFrame(y_test).to_csv(save_dir / f"{featureset}_y_test_surv.csv", index=False)
 
 
 

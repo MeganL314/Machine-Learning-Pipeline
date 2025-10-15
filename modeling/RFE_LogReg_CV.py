@@ -82,8 +82,6 @@ def create_XY_response(Main_df, feature_index, event_col=None, time_col=None, re
 
 # def remove_correlated():
 # easier pre-built function:
-from feature_engine.selection import DropCorrelatedFeatures
-
 tr = DropCorrelatedFeatures(variables=None,
                             method='spearman',
                             threshold=0.9)
@@ -358,9 +356,16 @@ def main():
         ## RFE-based Logistic Regression
         folds = int(row["folds"])
 
-        cross_validation_RFE(X_train_with_logs, y_train.values, X_test_with_logs, y_test.values, 
-                    out_file, folds, 'transf HPV16/18 copies per ml of plasma D1')
+       # cross_validation_RFE(X_train_with_logs, y_train.values, X_test_with_logs, y_test.values, 
+        #            out_file, folds, 'transf HPV16/18 copies per ml of plasma D1')
 
+        save_dir = Path("../../../data-wrangle/")     
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        X_train_with_logs.to_csv(save_dir / f"{featureset}_X_train_with_logs_LR.csv", index=False)
+        pd.DataFrame(y_train).to_csv(save_dir / f"{featureset}_y_train_LR.csv", index=False)
+        X_test_with_logs.to_csv(save_dir / f"{featureset}_X_test_with_logs_LR.csv", index=False)
+        pd.DataFrame(y_test).to_csv(save_dir / f"{featureset}_y_test_LR.csv", index=False)
 
 
 

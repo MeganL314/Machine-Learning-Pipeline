@@ -109,32 +109,30 @@ def log_transforms(df, featureset, suffix="_log"):
 
 
 # def cross_validation_RFE():
-def cross_validation_RFE(X_full, y_full, X_HoldOut, y_HoldOut, output_file, splits, mandatory_feature, num_features_max=3):
-    # Initialize Logistic Regression model (instead of Cox)
-    logistic_model = LogisticRegression(
-        penalty="l2", solver="liblinear", max_iter=1000
-    )
-    
+def cross_validation_RFE(X_full, y_full, X_HoldOut, y_HoldOut,
+    output_file, splits, mandatory_feature=None, num_features_max=3):
+
+    # Initialize Logistic Regression model
+    logistic_model = LogisticRegression(penalty="l2", 
+                                        solver="liblinear", max_iter=1000)
+
     # Open CSV file for writing results
-    with open(output_file, mode='w', newline='') as file:
+    with open(output_file, mode="w", newline="") as file:
         writer = csv.writer(file)
-        # Added Accuracy columns
-        writer.writerow(['NumFeatures', 'Validation_AUC', 'Validation_Accuracy',
-                         'Holdout_AUC', 'Holdout_Accuracy', 'OR > 1 Features', 'OR < 1 Features'])
+        writer.writerow([
+            "NumFeatures", "Validation_AUC", "Validation_Accuracy",
+            "Holdout_AUC", "Holdout_Accuracy", "OR > 1 Features", "OR < 1 Features"
+        ])
 
         for random_state in range(1, 11):
-            print(f'Running cross-validation with random state: {random_state}')
+            print(f"Running cross-validation with random state: {random_state}")
 
-            # Loop through the number of features to select
             for num_features in range(1, num_features_max + 1):
                 rfe = RFE(logistic_model, n_features_to_select=num_features)
                 cv = StratifiedKFold(n_splits=splits, shuffle=True, random_state=random_state)
 
-                fold_concordances = []            # will store validation AUCs
-                fold_concordances_holdout = []    # will store holdout AUCs
-
                 scaler = StandardScaler()
-                # use y_full directly for stratification (binary 0/1 vector)
+
                 for fold, (train_index, test_index) in enumerate(cv.split(X_full, y_full)):
                     X_train, X_test = X_full.iloc[train_index], X_full.iloc[test_index]
                     y_train, y_test = y_full[train_index], y_full[test_index]
@@ -146,7 +144,6 @@ def cross_validation_RFE(X_full, y_full, X_HoldOut, y_HoldOut, output_file, spli
                     X_test_v  = X_test.loc[:,  keep_vt]
                     X_hold_v  = X_HoldOut.loc[:, keep_vt]
 
-                    #dcf = DropCorrelatedFeatures(method='spearman', threshold=0.90)
                     current_cols = list(X_train_v.columns)
 
                     # Cap extreme values before scaling
@@ -155,111 +152,76 @@ def cross_validation_RFE(X_full, y_full, X_HoldOut, y_HoldOut, output_file, spli
                     X_train_v = X_train_v.clip(lower=q_low, upper=q_high, axis=1)
                     X_test_v  = X_test_v.clip(lower=q_low, upper=q_high, axis=1)
                     X_hold_v  = X_hold_v.clip(lower=q_low, upper=q_high, axis=1)
-                    
-                    # Scale the features for train and test data
+
+                    # Scale features
                     scaler.fit(X_train_v)
                     X_train_scaled = scaler.transform(X_train_v)
                     X_test_scaled = scaler.transform(X_test_v)
                     X_HoldOut_scaled = scaler.transform(X_hold_v)
 
-                    X_train_scaled_df = pd.DataFrame(X_train_scaled)
-                    ### Check why there is an error:
-                    nan_columns = X_train_scaled_df.columns[X_train_scaled_df.isna().any()].tolist()
-                   # print("Columns with NaN values:", nan_columns)
-
-                    inf_columns = X_train_scaled_df.columns[np.isinf(X_train_scaled_df).any(axis=0)].tolist()
-
-                    # print("Columns with infinite values:", inf_columns)
-                    
-                    # Fit the RFE model
-                    # rfe.fit(X_train_scaled, y_train)
-                    # selected_features = rfe.support_
-
-                    # The model must be Y ~ intercept + beta*mandatory_feature + (features selected by RFE),
-                    # i.e., RFE chooses the remaining features *conditional on* the mandatory one.
                     colnames = current_cols
-                    if mandatory_feature not in colnames:
-                        raise ValueError(f"Mandatory feature '{mandatory_feature}' not found in X_full.columns")
-                    m_idx = colnames.index(mandatory_feature)
 
-                    # indices of all other features
-                    rest_idx = [i for i in range(len(colnames)) if i != m_idx]
-                    # how many from the rest we want (total num_features includes the mandatory one)
-                    n_rest = max(0, num_features - 1)
+                    # --- Conditional logic: if mandatory_feature is provided ---
+                    if mandatory_feature is not None:
+                        if mandatory_feature not in colnames:
+                            raise ValueError(
+                                f"Mandatory feature '{mandatory_feature}' not found in X_full.columns"
+                            )
+                        m_idx = colnames.index(mandatory_feature)
+                        rest_idx = [i for i in range(len(colnames)) if i != m_idx]
+                        n_rest = max(0, num_features - 1)
 
-                    # start with all "rest" features and iteratively drop the weakest (by |coef|) while conditioning on the mandatory
-                    selected_rest = rest_idx.copy()
-                    while len(selected_rest) > n_rest:
+                        # iterative conditional RFE
+                        selected_rest = rest_idx.copy()
+                        while len(selected_rest) > n_rest:
+                            cols_order = [m_idx] + selected_rest
+                            Xtr_sel = X_train_scaled[:, cols_order]
+                            logistic_model.fit(Xtr_sel, y_train)
+                            coefs = np.asarray(logistic_model.coef_).ravel()
+                            drop_local = int(np.argmin(np.abs(coefs[1:])))
+                            del selected_rest[drop_local]
+
                         cols_order = [m_idx] + selected_rest
-                        Xtr_sel = X_train_scaled[:, cols_order]
-                        logistic_model.fit(Xtr_sel, y_train)
-                        coefs = np.asarray(logistic_model.coef_).ravel()  # length = 1 + len(selected_rest)
-                        # index 0 is the mandatory feature; find weakest among the rest
-                        drop_local = int(np.argmin(np.abs(coefs[1:])))  # local index within selected_rest
-                        del selected_rest[drop_local]
+                        selected_feature_names = [colnames[i] for i in cols_order]
 
-                    # final order: [mandatory, selected_rest...]
-                    cols_order = [m_idx] + selected_rest
-                    # boolean mask aligned to X_full.columns (to reuse your downstream indexing)
-                    selected_features = np.zeros(len(colnames), dtype=bool)
-                    selected_features[cols_order] = True
+                    else:
+                        # --- Normal RFE if no mandatory feature ---
+                        rfe.fit(X_train_scaled, y_train)
+                        cols_order = np.where(rfe.support_)[0].tolist()
+                        selected_feature_names = [colnames[i] for i in cols_order]
 
-                    # Select the RFE features (by index, not column names)
-                    X_train_rfe = X_train_scaled[:, selected_features]
-                    X_test_rfe  = X_test_scaled[:,  selected_features]
-                    # Keep holdout aligned as well
-                    X_HoldOut_rfe = X_HoldOut_scaled[:, selected_features]
+                    # select matrices
+                    X_train_rfe   = X_train_scaled[:, cols_order]
+                    X_test_rfe    = X_test_scaled[:,  cols_order]
+                    X_HoldOut_rfe = X_HoldOut_scaled[:, cols_order]
 
-                    # Also prepare the ordered selected feature names (mandatory first)
-                    selected_feature_names = [colnames[i] for i in cols_order]
-
-                    # IMPORTANT: keep 'y_pred = rfe.estimator_.predict(...)' working
-                    # point rfe.estimator_ to the model we fit on the selected columns.
-                    rfe.estimator_ = logistic_model
-
-                    # Fit the model on selected features to calculate (odds) ratios
+                    # Fit logistic model
                     logistic_model.fit(X_train_rfe, y_train)
-                    odds_ratios = np.exp(logistic_model.coef_).ravel()  # analogous to HRs for logistic
-                    
-                    # Separate features based on OR > 1 or OR < 1
-                    hr_greater_than_1 = []
-                    hr_less_than_1 = []
+                    odds_ratios = np.exp(logistic_model.coef_).ravel()
 
-                    for feature, orv in zip(selected_feature_names, odds_ratios):
-                        if orv > 1:
-                            hr_greater_than_1.append(feature)
-                        else:
-                            hr_less_than_1.append(feature)
+                    hr_greater_than_1 = [f for f, orv in zip(selected_feature_names, odds_ratios) if orv > 1]
+                    hr_less_than_1    = [f for f, orv in zip(selected_feature_names, odds_ratios) if orv <= 1]
 
-                    # Join feature names for OR > 1 and OR < 1
                     hr_greater_than_1_str = ", ".join(hr_greater_than_1)
                     hr_less_than_1_str = ", ".join(hr_less_than_1)
 
-                    # Validation predictions & metrics
-                    y_score = rfe.estimator_.decision_function(X_test_rfe)
+                    # Validation metrics
+                    y_score = logistic_model.decision_function(X_test_rfe)
                     val_auc = roc_auc_score(y_test, y_score)
-                    y_pred_cls = rfe.estimator_.predict(X_test_rfe)   # threshold at 0.5 (decision_function 0)
+                    y_pred_cls = logistic_model.predict(X_test_rfe)
                     val_acc = accuracy_score(y_test, y_pred_cls)
 
-                    fold_concordances.append(val_auc)
+                    # Holdout metrics
+                    y_score_ho = logistic_model.decision_function(X_HoldOut_rfe)
+                    ho_auc = roc_auc_score(y_HoldOut, y_score_ho)
+                    y_pred_ho = logistic_model.predict(X_HoldOut_rfe)
+                    ho_acc = accuracy_score(y_HoldOut, y_pred_ho)
 
-                    # Holdout predictions & metrics
-                    X_HoldOut_rfe = X_HoldOut_scaled[:, selected_features]
-                    y_HoldOut_score = rfe.estimator_.decision_function(X_HoldOut_rfe)
-                    ho_auc = roc_auc_score(y_HoldOut, y_HoldOut_score)
-                    ho_pred_cls = rfe.estimator_.predict(X_HoldOut_rfe)
-                    ho_acc = accuracy_score(y_HoldOut, ho_pred_cls)
-
-                    fold_concordances_holdout.append(ho_auc)
-
-                    selected_feature_names = ", ".join([colnames[i] for i in cols_order])
-
-                    #if num_features > 1:
-                        # Write results to CSV for this fold
-                    writer.writerow([num_features, val_auc, val_acc, ho_auc, ho_acc,
-                                         hr_greater_than_1_str, hr_less_than_1_str])
-
-
+                    # Write results to CSV
+                    writer.writerow([
+                        num_features, val_auc, val_acc, ho_auc, ho_acc,
+                        hr_greater_than_1_str, hr_less_than_1_str
+                    ])
 
 
 def main():
@@ -322,7 +284,10 @@ def main():
         no_corr = ['transf HPV16/18 copies per ml of plasma D1', 'HPV16/18 copies per ml of plasma D1']
         cols_for_corr = [c for c in X_train.columns if c not in no_corr]
 
-        X_train_drop_corr = tr.fit_transform(X_train[cols_for_corr])
+        # X_train_drop_corr = tr.fit_transform(X_train[cols_for_corr])
+        drop = ['LAP TGF-beta-1', 'Eosinophil Abs  D1', 'WBC D1', 'sCD27/IL8 D1', 
+                'HPV16/18 copies per ml of plasma D1', 'Hemoglobin D1', 'Lymphocytes % D1', 'Neutrophil % D1']
+        X_train_drop_corr = X_train.drop(columns=drop, errors='ignore')
 
         # add the protected column back in
         X_train_drop = pd.concat([X_train['transf HPV16/18 copies per ml of plasma D1'], X_train_drop_corr], axis=1)
@@ -356,10 +321,13 @@ def main():
         ## RFE-based Logistic Regression
         folds = int(row["folds"])
 
-       # cross_validation_RFE(X_train_with_logs, y_train.values, X_test_with_logs, y_test.values, 
-        #            out_file, folds, 'transf HPV16/18 copies per ml of plasma D1')
+ #       cross_validation_RFE(X_train_with_logs, y_train.values, X_test_with_logs, y_test.values, 
+  #                  out_file, folds, 'transf HPV16/18 copies per ml of plasma D1')
 
-        save_dir = Path("../../../data-wrangle/")     
+        cross_validation_RFE(X_train_with_logs, y_train.values, X_test_with_logs, y_test.values, 
+                    out_file, folds)
+
+        save_dir = Path("../../../data-wrangle/TrainTestSets")     
         save_dir.mkdir(parents=True, exist_ok=True)
 
         X_train_with_logs.to_csv(save_dir / f"{featureset}_X_train_with_logs_LR.csv", index=False)

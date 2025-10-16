@@ -222,9 +222,6 @@ def cross_validation_RFE(X_full, y_full, X_HoldOut, y_HoldOut,
 
 
 
-
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--settings", required=True)

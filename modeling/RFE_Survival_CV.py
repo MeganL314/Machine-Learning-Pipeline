@@ -281,7 +281,7 @@ def main():
 
         # X_train_drop_corr = tr.fit_transform(X_train[cols_for_corr])
         drop = ['LAP TGF-beta-1', 'Eosinophil Abs  D1', 'WBC D1', 'sCD27/IL8 D1', 
-                'HPV16/18 copies per ml of plasma D1', 'Hemoglobin D1', 'Lymphocytes % D1', 'Neutrophil % D1']
+                'transf HPV16/18 copies per ml of plasma D1', 'Hemoglobin D1', 'Lymphocytes % D1', 'Neutrophil % D1']
         X_train_drop_corr = X_train.drop(columns=drop, errors='ignore')
 
         # add the protected column back in
@@ -306,14 +306,20 @@ def main():
 
 
         X_test_drop = X_test[X_train_drop.columns]
-        cols_for_transform = [c for c in X_train_drop.columns if c not in {"Sex_num", "ICI_num",
-                                                                       "cancer_num", "transf HPV16/18 copies per ml of plasma D1",
-                                                                       "HPV16/18 copies per ml of plasma D1"}]
+        #cols_for_transform = [c for c in X_train_drop.columns if c not in {"Sex_num", "ICI_num",
+        #                                                               "cancer_num", "transf HPV16/18 copies per ml of plasma D1",
+        #                                                               "HPV16/18 copies per ml of plasma D1"}]
+        cols_for_transform = ["sPDL1 D1", "TGFb1 D1", "sPD1 D1", "IL8 D1",
+                              "Granzyme B D1", "sCD27 D1", "sCD40L D1",
+                              "Ratio sCD27/sCD40L D1", "sCD73 D1", "sCTLA4 D1",
+                              "GZMB/IL8 D1", "GZMB/TGFb1 D1", "GZMB/sCD73 D1",
+                              "GZMB/sCD40L D1", "sCD27/TGFb1 D1",
+                              "sCD27/sCD73 D1", "TGFb1/GZMB D1", "TGFb1/sCD27 D1"]
 
         ## Transformation??
         X_train_with_logs = log_transforms(X_train_drop, cols_for_transform)
         #print(X_train_with_logs.filter(like="_log").head())
-        #print(X_train_with_logs.columns.tolist())
+        print(X_train_with_logs.columns.tolist())
 
         X_test_with_logs = log_transforms(X_test_drop, cols_for_transform)
         #print(X_test_with_logs.filter(like="_log").head())
@@ -337,18 +343,18 @@ def main():
         ## CPH-based RFE
         folds = int(row["folds"])
 
-        #cross_validation_RFE(X_train_with_logs, y_train, X_test_with_logs, y_test, 
-        #            out_file, folds, 'transf HPV16/18 copies per ml of plasma D1')
-
         cross_validation_RFE(X_train_with_logs, y_train, X_test_with_logs, y_test, 
-                    out_file, folds)
+                    out_file, folds, 'HPV16/18 copies per ml of plasma D1')
+
+        #cross_validation_RFE(X_train_with_logs, y_train, X_test_with_logs, y_test, 
+        #            out_file, folds)
 
         save_dir = Path("../../../data-wrangle/TrainTestSets")     
         save_dir.mkdir(parents=True, exist_ok=True)
 
-        X_train_with_logs.to_csv(save_dir / f"{featureset}_X_train_with_logs_surv.csv", index=False)
+        X_train_with_logs.to_csv(save_dir / f"{featureset}_X_train_soluble_logs_raw_ctDNA_surv.csv", index=False)
         pd.DataFrame(y_train).to_csv(save_dir / f"{featureset}_y_train_surv.csv", index=False)
-        X_test_with_logs.to_csv(save_dir / f"{featureset}_X_test_with_logs_surv.csv", index=False)
+        X_test_with_logs.to_csv(save_dir / f"{featureset}_X_test_soluble_logs_raw_ctDNA_surv.csv", index=False)
         pd.DataFrame(y_test).to_csv(save_dir / f"{featureset}_y_test_surv.csv", index=False)
 
 

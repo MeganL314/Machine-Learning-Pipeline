@@ -278,15 +278,14 @@ def main():
         X_train = train_df[feats_present].copy()
         X_test  = test_df[feats_present].copy()
         
-
-        ## Remove correlated features
+       ## Remove correlated features
         ## Make sure to keep 'transf HPV16/18 copies per ml of plasma D1'
         no_corr = ['transf HPV16/18 copies per ml of plasma D1', 'HPV16/18 copies per ml of plasma D1']
         cols_for_corr = [c for c in X_train.columns if c not in no_corr]
 
         # X_train_drop_corr = tr.fit_transform(X_train[cols_for_corr])
         drop = ['LAP TGF-beta-1', 'Eosinophil Abs  D1', 'WBC D1', 'sCD27/IL8 D1', 
-                'HPV16/18 copies per ml of plasma D1', 'Hemoglobin D1', 'Lymphocytes % D1', 'Neutrophil % D1']
+                'transf HPV16/18 copies per ml of plasma D1', 'Hemoglobin D1', 'Lymphocytes % D1', 'Neutrophil % D1']
         X_train_drop_corr = X_train.drop(columns=drop, errors='ignore')
 
         # add the protected column back in
@@ -295,14 +294,36 @@ def main():
         dropped_features = list(set(X_train.columns) - set(X_train_drop.columns))
         print("Dropped features:", dropped_features)
 
+        corr = X_train.corr(method="spearman")
+
+        # Print the top absolute correlations
+        tri = corr.where(~np.tril(np.ones(corr.shape), k=0).astype(bool))
+        pairs = (
+            tri.stack()
+            .abs()
+            .sort_values(ascending=False)
+            .reset_index()
+            .rename(columns={"level_0":"feat1","level_1":"feat2",0:"abs_rho"})
+        )
+        print("top correlations:")
+        print(pairs.head(20).to_string(index=False))
+
+
         X_test_drop = X_test[X_train_drop.columns]
-        cols_for_transform = [c for c in X_train_drop.columns if c not in {"Sex_num", "ICI_num",
-                                                                       "cancer_num", "transf HPV16/18 copies per ml of plasma D1",
-                                                                       "HPV16/18 copies per ml of plasma D1"}]
+        #cols_for_transform = [c for c in X_train_drop.columns if c not in {"Sex_num", "ICI_num",
+        #                                                               "cancer_num", "transf HPV16/18 copies per ml of plasma D1",
+        #                                                               "HPV16/18 copies per ml of plasma D1"}]
+        cols_for_transform = ["sPDL1 D1", "TGFb1 D1", "sPD1 D1", "IL8 D1",
+                              "Granzyme B D1", "sCD27 D1", "sCD40L D1",
+                              "Ratio sCD27/sCD40L D1", "sCD73 D1", "sCTLA4 D1",
+                              "GZMB/IL8 D1", "GZMB/TGFb1 D1", "GZMB/sCD73 D1",
+                              "GZMB/sCD40L D1", "sCD27/TGFb1 D1",
+                              "sCD27/sCD73 D1", "TGFb1/GZMB D1", "TGFb1/sCD27 D1"]
 
         ## Transformation??
         X_train_with_logs = log_transforms(X_train_drop, cols_for_transform)
         #print(X_train_with_logs.filter(like="_log").head())
+        print(X_train_with_logs.columns.tolist())
 
         X_test_with_logs = log_transforms(X_test_drop, cols_for_transform)
         #print(X_test_with_logs.filter(like="_log").head())
@@ -313,7 +334,7 @@ def main():
         print(y_test.head())
 
         stamp = datetime.now().strftime("%Y-%m-%d_%H")
-        out_dir = Path(args.out_root) / "metrics" / stamp  / f"RFE_LogReg_{dataset}__{featureset}"
+        out_dir = Path(args.out_root) / stamp  / f"RFE_LogReg_{dataset}__{featureset}"
         out_dir.mkdir(parents=True, exist_ok=True)
         out_file = out_dir / f"{row['folds']}fold_CV_RS{row['random_state']}.csv"
 
@@ -330,9 +351,9 @@ def main():
         save_dir = Path("../../../data-wrangle/TrainTestSets")     
         save_dir.mkdir(parents=True, exist_ok=True)
 
-        X_train_with_logs.to_csv(save_dir / f"{featureset}_X_train_with_logs_LR.csv", index=False)
+        X_train_with_logs.to_csv(save_dir / f"{featureset}_X_train_soluble_logs_LR.csv", index=False)
         pd.DataFrame(y_train).to_csv(save_dir / f"{featureset}_y_train_LR.csv", index=False)
-        X_test_with_logs.to_csv(save_dir / f"{featureset}_X_test_with_logs_LR.csv", index=False)
+        X_test_with_logs.to_csv(save_dir / f"{featureset}_X_test_soluble_logs_LR.csv", index=False)
         pd.DataFrame(y_test).to_csv(save_dir / f"{featureset}_y_test_LR.csv", index=False)
 
 
